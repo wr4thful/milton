@@ -1,126 +1,94 @@
-![MiltonLogo](http://i.imgur.com/ADgRZUB.png)
+# Milton
 
-[Milton](https://github.com/serge-rgb/milton) is an open source application that lets you Just Paint.
+A fork of [serge-rgb/milton](https://github.com/serge-rgb/milton), the
+infinite-canvas paint program, maintained to fix bugs and improve the
+day-to-day experience.
 
-There are no pixels, you can paint with (almost) infinite detail. It feels raster-based but it works with vectors.
-It is not an image editor. It is not a vector graphics editor. It is a program that lets you draw, sketch and paint.
-There is no save button, your work is persistent with unlimited undo.
+> **What Milton is:** an open-source application that lets you *Just Paint*.
+> There are no pixels — you can paint with (almost) infinite detail. It feels
+> raster-based but works with vectors. It's not an image editor and it's not a
+> vector graphics editor; it's a program for drawing, sketching and painting.
+> There is no save button — your work is persistent with unlimited undo.
 
-### [Latest release](https://github.com/serge-rgb/milton/releases/)
+---
 
-![Milton Paint ss](http://i.imgur.com/4pdHeeI.png)
+## Why this fork exists
 
-![zoooom](http://i.imgur.com/fqOhPlr.gif)
+The upstream project is largely unmaintained. This fork exists to:
 
+- **Fix bugs** that affect real users (see [Fixed](#fixed) below).
+- **Introduce quality-of-life improvements** over time.
+- Keep the project buildable and usable on current toolchains.
 
-What Milton is not:
--------------------
+This is *not* a rewrite — the goal is a stable, dependable drop-in Milton.
 
-Milton is not an image editor or a vector graphics editor. It's a program that
-lets you draw, sketch and paint.
+## Fixed
 
-User Manual
-===========
+- **Data loss from failed or corrupted saves.** Milton autosaves with no user
+  control, and an interrupted or denied write previously replaced your only
+  copy of a drawing with an empty/corrupt file, producing
+  `MLT file could not be loaded. Magic number mismatch.` on the next open. This
+  release:
+  - backs up the previous file to `<name>.mlt.bak` before every save,
+  - aborts a save if the temporary write isn't a valid Milton file (so a bad
+    write can never clobber the good one),
+  - retries `MoveFileExW` on transient `ERROR_ACCESS_DENIED` / sharing / lock
+    errors (real-time antivirus briefly holds the freshly-written temp file),
+  - serializes saves so the background save thread and manual saves can't
+    collide on the same temp file.
 
-If the GUI makes something not-obvious, please create a github issue!
+## Roadmap
 
-It's very helpful to drag the mouse (or pen) while pressing `space` to pan the
-canvas.  Also, switching between the brush and the eraser with `b` and `e`.
-You can change the brush size with `[` and `]` and control the transparency
-with the number keys.
+Quality-of-life and bug-fixing work is planned and tracked here incrementally.
 
-Here is the  [latest video tutorial](https://www.youtube.com/watch?v=g27gHio2Ohk)
+---
 
-Check out the [patreon page](https://www.patreon.com/serge_rgb?ty=h) if you would like to help out. :)
+## User controls
 
-While on Windows there are binaries available, for Milton on Linux or OSX you will have to compile from source. There are some basic build instructions below. They will probably build, but please be prepared to do a bit of debugging on your end if you run into trouble, since these are not the primary development platforms.
+- **Pan:** drag (or use the pen) while holding `Space`.
+- **Brush / eraser:** `B` / `E`.
+- **Brush size:** `[` / `]`.
+- **Transparency:** number keys `1`–`0`.
 
-How to Compile
-==============
+## Compiling
 
-Windows
--------
+### Windows
 
-Milton currently supports Visual Studio 2019.
-
-Other versions of Visual Studio might not work.
-
-To build:
-
-Run a x64 developer command prompt (for VS 2019 this corresponds to the "x64 Native Tools Command Prompt") and type the following:
+Requires Visual Studio (the upstream readme targets 2019; this fork is verified
+to build on **VS 2026**). Open an **x64 Native Tools command prompt** in the
+repo root and run:
 
 ```
 build.bat
 ```
 
-Milton will be compiled to `build\Milton.exe`
+The binary is produced at `build\Milton.exe`.
 
+### Linux / macOS
 
-This repo provides a binary SDL.lib that was compiled by running
-`build_deps.bat` in the `third_party` directory.
+Not officially supported upstream, but the CMake path is:
 
-
-Linux and macOS
----------------
-
-As of 2018-10-24, linux and mac are not officially supported. I (Sergio) would like to support them again but my efforts are currently going into producing a new release for Windows. You can try and compile with the included scripts, but things will likely not work!
-
-On 2021-02-27 a successful build for Linux can be done with these steps:
-
-While in the milton top directory
 ```
 cd third_party/SDL2-2.0.8
-mkdir build
-cd build
-cmake -DVIDEO_WAYLAND=OFF -DCMAKE_INSTALL_PREFIX=linux64 -DCMAKE_BUILD_TYPE=Debug ../
-make
-make install
-```
-
-and then in the milton top directory, so ```cd ../../../```,
-```
-mkdir build
-cd build
-cmake ../
+mkdir build && cd build
+cmake -DVIDEO_WAYLAND=OFF -DCMAKE_INSTALL_PREFIX=linux64 -DCMAKE_BUILD_TYPE=Debug ..
+make && make install
+cd ../../..
+mkdir build && cd build
+cmake ..
 make
 ```
 
-And if successful, you should have an executable called "Milton" that runs.
+---
 
-I did not make this work automatically with CMake, because I don't know CMake.
+## Versioning
 
-Versioning scheme
-=================
+Upstream's scheme is kept: `MAJOR` tracks UI-overhaul releases, `MINOR` tracks
+binary-file-format compatibility (a version can read files saved by any *older*
+minor version, not any newer one), and `PATCH` is for non-breaking releases.
 
-Milton uses a MAJOR.MINOR.PATCH versioning scheme, where MAJOR keeps track of very significant changes, such as a UI overhaul. MINOR keeps track of binary file format compatibility. PATCH is incremented for new releases that do not break file format compatibility. PATCH version gets reset to 0 when the MINOR version increases.
+## License
 
-For example, Milton version 1.3.1 can read mlt files produced any previous version, but it can't read files produced by 1.4.0
-
-
-License
-=======
-
-    Milton
-
-    Copyright (C) 2015 - 2018 Sergio Gonzalez
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-Thanks
-======
-
-Milton is made with love by Sergio Gonzalez with the help of [awesome
-people](https://github.com/serge-rgb/milton/blob/master/CREDITS.md).
-
-
+GNU General Public License v3.0 — see [LICENSE.txt](LICENSE.txt). This fork is
+derived from [serge-rgb/milton](https://github.com/serge-rgb/milton), made
+possible by Sergio Gonzalez and the [contributors](CREDITS.md).

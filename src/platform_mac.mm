@@ -369,6 +369,35 @@ platform_move_file(PATH_CHAR* src, PATH_CHAR* dest)
     return res == 0;
 }
 
+b32
+platform_copy_file(PATH_CHAR* src, PATH_CHAR* dest)
+{
+    FILE* in = fopen(src, "rb");
+    if ( !in ) return false;
+    FILE* out = fopen(dest, "wb");
+    if ( !out ) {
+        fclose(in);
+        return false;
+    }
+
+    char buf[1 << 16];
+    size_t n;
+    b32 ok = true;
+    while ( (n = fread(buf, 1, sizeof(buf), in)) > 0 ) {
+        if ( fwrite(buf, 1, n, out) != n ) {
+            ok = false;
+            break;
+        }
+    }
+    if ( ferror(in) ) {
+        ok = false;
+    }
+
+    fclose(in);
+    fclose(out);
+    return ok;
+}
+
 float
 platform_ui_scale(PlatformState* p)
 {

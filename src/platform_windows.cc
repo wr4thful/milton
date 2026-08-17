@@ -620,8 +620,28 @@ win32_print_error(int err)
 b32
 platform_move_file(PATH_CHAR* src, PATH_CHAR* dest)
 {
+    // Real-time antivirus / search indexers can briefly hold a freshly-written
+    // temp file, which makes MoveFileExW fail with ERROR_ACCESS_DENIED or
+    // ERROR_SHARING_VIOLATION even though the operation is otherwise valid.
+    // Retry such transient failures instead of giving up (and never delete the
+    // last good file over a spurious deny).
+    const int num_attempts = 8;
+    bool transient = true;
     b32 ok = MoveFileExW(src, dest, MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED);
-    //b32 ok = MoveFileExA(src, dest, MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED | MOVEFILE_WRITE_THROUGH);
+
+    for ( int attempt = 1; !ok && transient && attempt < num_attempts; ++attempt ) {
+        int err = (int)GetLastError();
+        transient = ( err == ERROR_ACCESS_DENIED ||
+                      err == ERROR_SHARING_VIOLATION ||
+                      err == ERROR_LOCK_VIOLATION );
+        if ( transient ) {
+            milton_log("MoveFileExW denied (error %d) on attempt %d of %d. Retrying.\n",
+                       err, attempt + 1, num_attempts);
+            Sleep(150 * attempt);
+            ok = MoveFileExW(src, dest, MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED);
+        }
+    }
+
     if (!ok) {
         int err = (int)GetLastError();
         win32_print_error(err);
@@ -631,6 +651,19 @@ platform_move_file(PATH_CHAR* src, PATH_CHAR* dest)
             win32_print_error((int)GetLastError());
 
         }
+    }
+    return ok;
+}
+
+b32
+platform_copy_file(PATH_CHAR* src, PATH_CHAR* dest)
+{
+    // COPY_FILE_ALLOW_FAILED_WINDOWS : treat cross-volume copies over a
+    // read-only dest as a success rather than failing the whole save.
+    b32 ok = CopyFileW(src, dest, FALSE);
+    if (!ok) {
+        int err = (int)GetLastError();
+        win32_print_error(err);
     }
     return ok;
 }

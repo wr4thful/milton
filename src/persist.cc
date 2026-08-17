@@ -472,6 +472,17 @@ end_data_tracking()
 u64
 milton_save(Milton* milton)
 {
+    // Serialize all saves.  Milton saves from a background save thread AND
+    // directly from the main thread (File > Save As, New Canvas, Open-save).
+    // Two saves running at once can collide on the same "<name>.mlt_tmp_<pid>"
+    // temp file, making one of the MoveFileEx renames fail with
+    // ERROR_ACCESS_DENIED.  This mutex makes the whole save critical section.
+    static SDL_mutex* save_serial_mutex = NULL;
+    if ( save_serial_mutex == NULL ) {
+        save_serial_mutex = SDL_CreateMutex();
+    }
+    SDL_LockMutex(save_serial_mutex);
+
     begin_data_tracking();
     // Declaring variables here to silence compiler warnings about GOTO jumping declarations.
     i32 history_count = 0;
@@ -700,6 +711,50 @@ milton_save(Milton* milton)
                     platform_dialog("Milton failed to write to the file!", "Save error.");
                 }
                 else {
+                    // Verify the freshly-written temp file actually has a valid
+                    // Milton header before we allow it to replace the real file.
+                    // A corrupt/zeroed/truncated write must never be able to
+                    // destroy the last good copy -- that is exactly what led to
+                    // the "MLT file could not be loaded. Magic number mismatch."
+                    // failure (e.g. a shutdown/antivirus/concurrent-instance
+                    // interruption that left an all-zero temp file).
+                    b32 tmp_header_ok = false;
+                    {
+                        FILE* v = platform_fopen(tmp_fname, TO_PATH_STR("rb"));
+                        if ( v ) {
+                            u32 m = (u32)-1;
+                            u32 ver = (u32)-1;
+                            if ( fread_checked(&m, sizeof(u32), 1, v) &&
+                                 fread_checked(&ver, sizeof(u32), 1, v) &&
+                                 m == MILTON_MAGIC_NUMBER &&
+                                 ver <= MILTON_MINOR_VERSION ) {
+                                tmp_header_ok = true;
+                            }
+                            fclose(v);
+                        }
+                    }
+
+                    if ( !tmp_header_ok ) {
+                        milton_log("ABORTING save: temp file '%s' has invalid header. "
+                                   "Keeping the previous file intact.\n", tmp_fname);
+                        milton->flags |= MiltonStateFlags_MOVE_FILE_FAILED;
+                    }
+                    else {
+                    // Keep a rolling backup of the previous version of the
+                    // file, so that a corrupt or interrupted save can never
+                    // destroy a drawing without recovery.  We copy the current
+                    // file (which was the result of the last successful save)
+                    // to "<name>.bak" before overwriting it.
+                    {
+                        PATH_CHAR bak_fname[MAX_PATH] = {};
+                        PATH_SNPRINTF(bak_fname, MAX_PATH, TO_PATH_STR("%s.bak"), milton->persist->mlt_file_path);
+                        FILE* existing = platform_fopen(milton->persist->mlt_file_path, TO_PATH_STR("rb"));
+                        if ( existing ) {
+                            fclose(existing);
+                            platform_copy_file(milton->persist->mlt_file_path, bak_fname);
+                        }
+                    }
+
                     if ( platform_move_file(tmp_fname, milton->persist->mlt_file_path) ) {
                         //  \o/
                         milton_save_postlude(milton);
@@ -707,6 +762,7 @@ milton_save(Milton* milton)
                     else {
                         milton_log("Could not move file. Moving on. Avoiding this save.\n");
                         milton->flags |= MiltonStateFlags_MOVE_FILE_FAILED;
+                    }
                     }
                 }
             }
@@ -724,6 +780,8 @@ milton_save(Milton* milton)
         milton_die_gracefully("Could not create file for saving! ");
     }
     u64 bytes_written = end_data_tracking();
+
+    SDL_UnlockMutex(save_serial_mutex);
     return bytes_written;
 }
 
